@@ -121,6 +121,10 @@ def run_query(query: str, top_k: int = 3) -> None:
             content_preview += "..."
         print(f"[grey37]{content_preview}[/grey37]\n")
 
+    if top.empty:
+        print("[yellow]No content available to answer the query. Run the pipeline with real PDFs first.[/yellow]")
+        return
+
     reply = rag.generate(query, top)
     print(f"[turquoise4][b]REPLY:[/b][/turquoise4]\n\n[spring_green4]{reply}[/spring_green4]")
 
