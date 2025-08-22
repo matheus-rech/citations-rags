@@ -21,7 +21,11 @@ def convert_doc_to_images(path: str) -> List[Image.Image]:
     for page in doc:
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
-        images.append(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
+    with fitz.open(path) as doc:
+        for page in doc:
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            images.append(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
     return images
 
 
