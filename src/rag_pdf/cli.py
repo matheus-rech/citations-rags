@@ -13,6 +13,7 @@ from .embeddings import Embedder
 from .retrieval import RAG
 from .schema_extractor import extract_structured_from_text
 from .schemas import StudyExtraction
+from .structured_pipeline import run_strict_extraction_for_pdf
 
 
 def list_pdfs(pdf_dir: str) -> List[str]:
@@ -148,6 +149,11 @@ def main():
     p_extract.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
     p_extract.add_argument("--out", type=str, default=None, help="Output JSON path (default under data/<stem>_extraction.json)")
     p_extract.add_argument("--max_chars", type=int, default=20000, help="Max chars of linearized text to feed the model")
+    p_extract.add_argument("--strict", action="store_true", help="Use Responses API with two-pass provenance resolution for meta-analysis schema")
+
+    p_harmonize = sub.add_parser("harmonize", help="Build a harmonized CSV for meta-analysis from multiple JSON extractions")
+    p_harmonize.add_argument("inputs", nargs='+', help="One or more JSON extraction files under data/")
+    p_harmonize.add_argument("--out", type=str, default=None, help="Output CSV path (default data/harmonized_meta.csv)")
 
     args = parser.parse_args()
 
@@ -166,15 +172,31 @@ def main():
             else:
                 print(f"[red]PDF not found: {args.pdf}[/red]")
                 return
-        text = extract_text_from_doc(pdf_path)
-        if not text:
-            print("[yellow]Text extraction returned empty. The extractor may have limited context; consider vision-first summary + OCR if needed.[/yellow]")
-        data = extract_structured_from_text(settings.openai_api_key, settings.chat_model, text[:args.max_chars])
-        try:
-            # try strict pydantic validation for confidence
-            _ = StudyExtraction.model_validate(data)
-        except Exception as e:
-            print(f"[yellow]Warning: pydantic validation not strict-pass: {e}[/yellow]")
+        if args.strict:
+            data = run_strict_extraction_for_pdf(pdf_path, max_chars=args.max_chars)
+        else:
+            text = extract_text_from_doc(pdf_path)
+            if not text:
+                print("[yellow]Text extraction returned empty. Attempting to use prior GPT-4o page descriptions as fallback context.[/yellow]")
+                # Fallback: load pages_description from parsed json if present
+                try:
+                    with open(settings.parsed_json_path, 'r') as f:
+                        docs = json.load(f)
+                    fname = os.path.basename(pdf_path)
+                    for d in docs:
+                        if d.get('filename') == fname and d.get('pages_description'):
+                            text = "\n\n".join(d.get('pages_description'))
+                            break
+                except Exception:
+                    pass
+                if not text:
+                    print("[yellow]No fallback descriptions found. The extractor may have limited context; consider running pipeline with vision first.[/yellow]")
+            data = extract_structured_from_text(settings.openai_api_key, settings.chat_model, text[:args.max_chars] if text else "")
+            try:
+                # try strict pydantic validation for confidence
+                _ = StudyExtraction.model_validate(data)
+            except Exception as e:
+                print(f"[yellow]Warning: pydantic validation not strict-pass: {e}[/yellow]")
         out_path = args.out
         if out_path is None:
             stem = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -182,6 +204,27 @@ def main():
         with open(out_path, 'w') as f:
             json.dump(data, f, indent=2)
         print(f"[green]Saved structured extraction to {out_path}[/green]")
+    elif args.cmd == "harmonize":
+        settings = load_settings()
+        from .harmonize import harmonize_to_csv
+        ins: List[str] = []
+        for p in args.inputs:
+            pth = p if os.path.isabs(p) else os.path.join(settings.data_dir, p)
+            if os.path.isfile(pth):
+                ins.append(pth)
+            else:
+                print(f"[yellow]Skipping missing input: {pth}[/yellow]")
+        if not ins:
+            print("[red]No valid inputs provided.[/red]")
+            return
+        out_path = args.out or os.path.join(settings.data_dir, 'harmonized_meta.csv')
+        import json as _json
+        exs = []
+        for pth in ins:
+            with open(pth, 'r') as f:
+                exs.append(_json.load(f))
+        harmonize_to_csv(exs, out_path)
+        print(f"[green]Wrote harmonized meta-analysis CSV to {out_path}[/green]")
 
 
 if __name__ == "__main__":
