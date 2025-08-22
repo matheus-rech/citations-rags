@@ -2,6 +2,7 @@ import json
 from typing import Dict, Any
 from openai import OpenAI
 from jsonschema import validate
+from .schemas import StudyExtraction
 
 # JSON schema provided by the user
 SCHEMA: Dict[str, Any] = {
@@ -151,7 +152,9 @@ def extract_structured_from_text(api_key: str, model: str, text: str) -> Dict[st
 
     # Validate against schema (best-effort)
     try:
-        validate(instance=data, schema=SCHEMA["schema"])  # validate against the JSON schema part
+        validate(instance=data, schema=SCHEMA["schema"])  # JSON Schema check
+        # Pydantic typed validation as defense-in-depth
+        _ = StudyExtraction.model_validate(data)
     except Exception:
         pass
     return data

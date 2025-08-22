@@ -11,6 +11,8 @@ from .vision_analytics import VisionAnalyzer
 from .chunking import merge_and_chunk, clean_content
 from .embeddings import Embedder
 from .retrieval import RAG
+from .schema_extractor import extract_structured_from_text
+from .schemas import StudyExtraction
 
 
 def list_pdfs(pdf_dir: str) -> List[str]:
@@ -142,12 +144,44 @@ def main():
     p_query.add_argument("query", type=str, help="User query text")
     p_query.add_argument("--top_k", type=int, default=3)
 
+    p_extract = sub.add_parser("extract-json", help="Extract structured JSON matching clinical schema from a single PDF")
+    p_extract.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
+    p_extract.add_argument("--out", type=str, default=None, help="Output JSON path (default under data/<stem>_extraction.json)")
+    p_extract.add_argument("--max_chars", type=int, default=20000, help="Max chars of linearized text to feed the model")
+
     args = parser.parse_args()
 
     if args.cmd == "run":
         run_pipeline(pdf_dir=args.pdf_dir, skip_vision=args.skip_vision, skip_text=args.skip_text)
     elif args.cmd == "query":
         run_query(args.query, top_k=args.top_k)
+    elif args.cmd == "extract-json":
+        settings = load_settings()
+        pdf_path = args.pdf
+        if not os.path.isfile(pdf_path):
+            # Also try relative to data dir
+            candidate = os.path.join(settings.data_dir, pdf_path)
+            if os.path.isfile(candidate):
+                pdf_path = candidate
+            else:
+                print(f"[red]PDF not found: {args.pdf}[/red]")
+                return
+        text = extract_text_from_doc(pdf_path)
+        if not text:
+            print("[yellow]Text extraction returned empty. The extractor may have limited context; consider vision-first summary + OCR if needed.[/yellow]")
+        data = extract_structured_from_text(settings.openai_api_key, settings.chat_model, text[:args.max_chars])
+        try:
+            # try strict pydantic validation for confidence
+            _ = StudyExtraction.model_validate(data)
+        except Exception as e:
+            print(f"[yellow]Warning: pydantic validation not strict-pass: {e}[/yellow]")
+        out_path = args.out
+        if out_path is None:
+            stem = os.path.splitext(os.path.basename(pdf_path))[0]
+            out_path = os.path.join(settings.data_dir, f"{stem}_extraction.json")
+        with open(out_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        print(f"[green]Saved structured extraction to {out_path}[/green]")
 
 
 if __name__ == "__main__":

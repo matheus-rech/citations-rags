@@ -10,3 +10,4 @@ python-dotenv>=1.0.1
 Pillow>=10.3.0
 numpy>=1.26.4
 jsonschema>=4.22.0
+pydantic>=2.8.2
