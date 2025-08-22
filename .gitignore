@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+
+# Environments
+.env
+.venv/
+venv/
+.env.local
+
+# Data outputs
+/data/*.json
+/data/*.csv
+/data/*.parquet
+/data/**/*.json
+/data/**/*.csv
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
