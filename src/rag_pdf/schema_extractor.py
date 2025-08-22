@@ -142,7 +142,7 @@ def extract_structured_from_text(api_key: str, model: str, text: str) -> Dict[st
     # Robust JSON parsing: direct, or extract braces span
     try:
         data = json.loads(raw)
-    except Exception:
+    except json.JSONDecodeError:
         start = raw.find('{')
         end = raw.rfind('}')
         if start != -1 and end != -1 and end > start:
