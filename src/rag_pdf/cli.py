@@ -160,6 +160,9 @@ def main():
     p_highlight.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
     p_highlight.add_argument("out", type=str, help="Output PDF path (e.g., data/output_highlighted.pdf)")
     p_highlight.add_argument("citations", type=str, help="JSON file path or inline JSON array/object with citations")
+    p_highlight.add_argument("--entity-type", type=str, default=None, help="Override entity_type for all citations (e.g., 'variable', 'method', 'result')")
+    p_highlight.add_argument("--color", type=str, default=None, help="Override color for all citations (e.g., 'yellow', 'green', 'blue')")
+    p_highlight.add_argument("--enable-fuzzy", action="store_true", help="Enable fuzzy rectangle matching when exact text search fails")
 
     # Claude end-to-end ask + highlight
     p_claude = sub.add_parser("ask-highlight-claude", help="Ask Claude with a PDF and then highlight returned citations")
@@ -168,6 +171,9 @@ def main():
     p_claude.add_argument("question", type=str, help="Question to ask Claude")
     p_claude.add_argument("--title", type=str, default=None, help="Optional title passed to Claude")
     p_claude.add_argument("--model", type=str, default=None, help="Override ANTHROPIC_MODEL")
+    p_claude.add_argument("--entity-type", type=str, default=None, help="Override entity_type for all citations")
+    p_claude.add_argument("--color", type=str, default=None, help="Override color for all citations")
+    p_claude.add_argument("--enable-fuzzy", action="store_true", help="Enable fuzzy rectangle matching when exact text search fails")
 
     args = parser.parse_args()
 
@@ -235,6 +241,21 @@ def main():
         except Exception as e:
             print(f"[red]Failed to load citations: {e}[/red]")
             return
+        
+        # Apply overrides if specified
+        if args.entity_type or args.color:
+            enhanced_cits = []
+            for c in cits:
+                if isinstance(c, dict):
+                    if args.entity_type:
+                        c["entity_type"] = args.entity_type
+                    if args.color:
+                        c["color"] = args.color
+                    enhanced_cits.append(c)
+                else:
+                    enhanced_cits.append(c)
+            cits = enhanced_cits
+        
         try:
             summary = highlight_pdf(pdf_path, out_path, cits)
         except Exception as e:
@@ -242,6 +263,10 @@ def main():
             return
         print(f"[green]Created highlighted PDF at: {out_path}[/green]")
         print(f"Summary: {summary}")
+        if args.entity_type:
+            print(f"Applied entity type: {args.entity_type}")
+        if args.color:
+            print(f"Applied color: {args.color}")
     elif args.cmd == "harmonize":
         settings = load_settings()
         from .harmonize import harmonize_to_csv
@@ -280,8 +305,27 @@ def main():
         except Exception as e:
             print(f"[red]Claude ask+highlight failed: {e}[/red]")
             return
+        
+        # Apply overrides if specified
+        if args.entity_type or args.color:
+            from .pdf_highlighter import highlight_pdf
+            enhanced_cits = []
+            for c in citations:
+                if isinstance(c, dict):
+                    if args.entity_type:
+                        c["entity_type"] = args.entity_type
+                    if args.color:
+                        c["color"] = args.color
+                enhanced_cits.append(c)
+            # Re-highlight with overrides
+            summary = highlight_pdf(pdf_path, out_path, enhanced_cits)
+        
         print(f"[green]Created highlighted PDF at: {out_path}[/green]")
         print(f"Summary: {summary}")
+        if args.entity_type:
+            print(f"Applied entity type: {args.entity_type}")
+        if args.color:
+            print(f"Applied color: {args.color}")
         if citations:
             print("Citations sample:")
             from itertools import islice
