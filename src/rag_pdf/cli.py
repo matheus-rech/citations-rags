@@ -92,8 +92,7 @@ def run_pipeline(pdf_dir: str | None = None, skip_vision: bool = False, skip_tex
     print("Creating embeddings (this can take a while)...")
     df = embedder.build_df(cleaned)
     embedder.save_df(df, settings.embeddings_csv_path)
-    print(f"[green]Saved embeddings to {settings.embeddings_csv_path}[/green]
-")
+    print(f"[green]Saved embeddings to {settings.embeddings_csv_path}[/green]")
 
 
 def run_query(query: str, top_k: int = 3) -> None:
