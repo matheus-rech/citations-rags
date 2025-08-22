@@ -12,6 +12,9 @@ __pycache__/
 venv/
 .env.local
 
+# Local Git credentials (repo-only)
+.git-credentials
+
 # Data outputs
 /data/*.json
 /data/*.csv
