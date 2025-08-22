@@ -161,6 +161,14 @@ def main():
     p_highlight.add_argument("out", type=str, help="Output PDF path (e.g., data/output_highlighted.pdf)")
     p_highlight.add_argument("citations", type=str, help="JSON file path or inline JSON array/object with citations")
 
+    # Claude end-to-end ask + highlight
+    p_claude = sub.add_parser("ask-highlight-claude", help="Ask Claude with a PDF and then highlight returned citations")
+    p_claude.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
+    p_claude.add_argument("out", type=str, help="Output PDF path (e.g., data/output_highlighted.pdf)")
+    p_claude.add_argument("question", type=str, help="Question to ask Claude")
+    p_claude.add_argument("--title", type=str, default=None, help="Optional title passed to Claude")
+    p_claude.add_argument("--model", type=str, default=None, help="Override ANTHROPIC_MODEL")
+
     args = parser.parse_args()
 
     if args.cmd == "run":
@@ -255,6 +263,30 @@ def main():
                 exs.append(_json.load(f))
         harmonize_to_csv(exs, out_path)
         print(f"[green]Wrote harmonized meta-analysis CSV to {out_path}[/green]")
+    elif args.cmd == "ask-highlight-claude":
+        from .citations_provider import ask_and_highlight_with_claude
+        settings = load_settings()
+        pdf_path = args.pdf
+        if not os.path.isfile(pdf_path):
+            candidate = os.path.join(settings.data_dir, pdf_path)
+            if os.path.isfile(candidate):
+                pdf_path = candidate
+            else:
+                print(f"[red]PDF not found: {args.pdf}[/red]")
+                return
+        out_path = args.out if os.path.isabs(args.out) else os.path.join(settings.data_dir, args.out)
+        try:
+            summary, citations = ask_and_highlight_with_claude(pdf_path, out_path, args.question, title=args.title, model=args.model)
+        except Exception as e:
+            print(f"[red]Claude ask+highlight failed: {e}[/red]")
+            return
+        print(f"[green]Created highlighted PDF at: {out_path}[/green]")
+        print(f"Summary: {summary}")
+        if citations:
+            print("Citations sample:")
+            from itertools import islice
+            import json as _json
+            print(_json.dumps(list(islice(citations, 0, 3)), indent=2))
 
 
 if __name__ == "__main__":
