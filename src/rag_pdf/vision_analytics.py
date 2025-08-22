@@ -54,3 +54,30 @@ class VisionAnalyzer:
 
     def analyze_images(self, images: List) -> List[str]:
         return [self.analyze_image(img) for img in images]
+
+    def ocr_image(self, img) -> str:
+        """OCR-style transcription using GPT-4o: extract text verbatim without commentary."""
+        data_uri = image_to_data_uri(img)
+        ocr_system = (
+            "You are an OCR engine. Extract ALL visible text verbatim from the image. "
+            "Preserve numbers, symbols, units, and basic ordering. Do NOT summarize or add commentary. "
+            "Return ONLY the raw text content."
+        )
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": ocr_system},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_uri}
+                        }
+                    ]
+                },
+            ],
+            max_tokens=1200,
+            temperature=0,
+        )
+        return resp.choices[0].message.content or ""

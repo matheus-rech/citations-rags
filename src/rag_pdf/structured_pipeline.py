@@ -7,6 +7,7 @@ from jsonschema import validate
 from .vision_analytics import VisionAnalyzer
 from .config import load_settings
 from .http_responses import responses_create_json_schema, extract_output_text
+from .ocr_pipeline import ocr_linearize_pdf
 
 # Schema tailored to user's meta-analysis requirements
 META_SCHEMA: Dict[str, Any] = {
@@ -300,6 +301,14 @@ def run_strict_extraction_for_pdf(pdf_path: str, max_chars: int = 20000) -> Dict
     except Exception:
         linear = ''
 
+    # If no text, try OCR to build synthetic linear text
+    if not linear:
+        try:
+            linear = ocr_linearize_pdf(pdf_path)
+        except Exception:
+            linear = ''
+
+    # If still empty, fallback to GPT-4o page descriptions previously saved
     if not linear:
         pages = _load_parsed_doc_pages(fname)
         linear = '\n\n'.join(pages)
