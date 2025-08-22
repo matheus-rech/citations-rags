@@ -3,6 +3,7 @@ from typing import List
 import pandas as pd
 import numpy as np
 from openai import OpenAI
+from ast import literal_eval
 
 
 @dataclass
@@ -35,5 +36,5 @@ class Embedder:
     @staticmethod
     def load_df(path: str) -> pd.DataFrame:
         df = pd.read_csv(path)
-        df["embeddings"] = df.embeddings.apply(lambda s: np.array(eval(s)))
+        df["embeddings"] = df.embeddings.apply(lambda s: np.array(literal_eval(s)))
         return df
