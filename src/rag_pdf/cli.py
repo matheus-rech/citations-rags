@@ -11,6 +11,9 @@ from .vision_analytics import VisionAnalyzer
 from .chunking import merge_and_chunk, clean_content
 from .embeddings import Embedder
 from .retrieval import RAG
+from .schema_extractor import extract_structured_from_text
+from .schemas import StudyExtraction
+from .structured_pipeline import run_strict_extraction_for_pdf
 
 
 def list_pdfs(pdf_dir: str) -> List[str]:
@@ -142,12 +145,116 @@ def main():
     p_query.add_argument("query", type=str, help="User query text")
     p_query.add_argument("--top_k", type=int, default=3)
 
+    p_extract = sub.add_parser("extract-json", help="Extract structured JSON matching clinical schema from a single PDF")
+    p_extract.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
+    p_extract.add_argument("--out", type=str, default=None, help="Output JSON path (default under data/<stem>_extraction.json)")
+    p_extract.add_argument("--max_chars", type=int, default=20000, help="Max chars of linearized text to feed the model")
+    p_extract.add_argument("--strict", action="store_true", help="Use Responses API with two-pass provenance resolution for meta-analysis schema")
+
+    p_harmonize = sub.add_parser("harmonize", help="Build a harmonized CSV for meta-analysis from multiple JSON extractions")
+    p_harmonize.add_argument("inputs", nargs='+', help="One or more JSON extraction files under data/")
+    p_harmonize.add_argument("--out", type=str, default=None, help="Output CSV path (default data/harmonized_meta.csv)")
+
+    # PDF highlighting tool
+    p_highlight = sub.add_parser("highlight", help="Highlight citations on a PDF and write a new PDF with annotations")
+    p_highlight.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
+    p_highlight.add_argument("out", type=str, help="Output PDF path (e.g., data/output_highlighted.pdf)")
+    p_highlight.add_argument("citations", type=str, help="JSON file path or inline JSON array/object with citations")
+
     args = parser.parse_args()
 
     if args.cmd == "run":
         run_pipeline(pdf_dir=args.pdf_dir, skip_vision=args.skip_vision, skip_text=args.skip_text)
     elif args.cmd == "query":
         run_query(args.query, top_k=args.top_k)
+    elif args.cmd == "extract-json":
+        settings = load_settings()
+        pdf_path = args.pdf
+        if not os.path.isfile(pdf_path):
+            # Also try relative to data dir
+            candidate = os.path.join(settings.data_dir, pdf_path)
+            if os.path.isfile(candidate):
+                pdf_path = candidate
+            else:
+                print(f"[red]PDF not found: {args.pdf}[/red]")
+                return
+        if args.strict:
+            data = run_strict_extraction_for_pdf(pdf_path, max_chars=args.max_chars)
+        else:
+            text = extract_text_from_doc(pdf_path)
+            if not text:
+                print("[yellow]Text extraction returned empty. Attempting to use prior GPT-4o page descriptions as fallback context.[/yellow]")
+                # Fallback: load pages_description from parsed json if present
+                try:
+                    with open(settings.parsed_json_path, 'r') as f:
+                        docs = json.load(f)
+                    fname = os.path.basename(pdf_path)
+                    for d in docs:
+                        if d.get('filename') == fname and d.get('pages_description'):
+                            text = "\n\n".join(d.get('pages_description'))
+                            break
+                except Exception:
+                    pass
+                if not text:
+                    print("[yellow]No fallback descriptions found. The extractor may have limited context; consider running pipeline with vision first.[/yellow]")
+            data = extract_structured_from_text(settings.openai_api_key, settings.chat_model, text[:args.max_chars] if text else "")
+            try:
+                # try strict pydantic validation for confidence
+                _ = StudyExtraction.model_validate(data)
+            except Exception as e:
+                print(f"[yellow]Warning: pydantic validation not strict-pass: {e}[/yellow]")
+        out_path = args.out
+        if out_path is None:
+            stem = os.path.splitext(os.path.basename(pdf_path))[0]
+            out_path = os.path.join(settings.data_dir, f"{stem}_extraction.json")
+        with open(out_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        print(f"[green]Saved structured extraction to {out_path}[/green]")
+    elif args.cmd == "highlight":
+        from .pdf_highlighter import highlight_pdf, load_citations_from_json
+        settings = load_settings()
+        pdf_path = args.pdf
+        if not os.path.isfile(pdf_path):
+            candidate = os.path.join(settings.data_dir, pdf_path)
+            if os.path.isfile(candidate):
+                pdf_path = candidate
+            else:
+                print(f"[red]PDF not found: {args.pdf}[/red]")
+                return
+        out_path = args.out if os.path.isabs(args.out) else os.path.join(settings.data_dir, args.out)
+        try:
+            cits = load_citations_from_json(args.citations)
+        except Exception as e:
+            print(f"[red]Failed to load citations: {e}[/red]")
+            return
+        try:
+            summary = highlight_pdf(pdf_path, out_path, cits)
+        except Exception as e:
+            print(f"[red]Highlighting failed: {e}[/red]")
+            return
+        print(f"[green]Created highlighted PDF at: {out_path}[/green]")
+        print(f"Summary: {summary}")
+    elif args.cmd == "harmonize":
+        settings = load_settings()
+        from .harmonize import harmonize_to_csv
+        ins: List[str] = []
+        for p in args.inputs:
+            pth = p if os.path.isabs(p) else os.path.join(settings.data_dir, p)
+            if os.path.isfile(pth):
+                ins.append(pth)
+            else:
+                print(f"[yellow]Skipping missing input: {pth}[/yellow]")
+        if not ins:
+            print("[red]No valid inputs provided.[/red]")
+            return
+        out_path = args.out or os.path.join(settings.data_dir, 'harmonized_meta.csv')
+        import json as _json
+        exs = []
+        for pth in ins:
+            with open(pth, 'r') as f:
+                exs.append(_json.load(f))
+        harmonize_to_csv(exs, out_path)
+        print(f"[green]Wrote harmonized meta-analysis CSV to {out_path}[/green]")
 
 
 if __name__ == "__main__":
