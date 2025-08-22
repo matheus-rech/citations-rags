@@ -286,7 +286,19 @@ def extract_with_responses_api(text: str, model: str, api_key: str) -> Dict[str,
     try:
         validate(instance=data, schema=META_SCHEMA)
     except Exception:
-        pass
+    except json.JSONDecodeError as e:
+        logging.warning(f"Initial JSON parsing failed: {e}. Attempting to parse substring.")
+        start = raw.find('{')
+        end = raw.rfind('}')
+        try:
+            data = json.loads(raw[start:end+1])
+        except json.JSONDecodeError as e2:
+            logging.error(f"Fallback JSON parsing also failed: {e2}. Returning empty dict.")
+            data = {}
+    try:
+        validate(instance=data, schema=META_SCHEMA)
+    except Exception as e:
+        logging.warning(f"Schema validation failed: {e}")
     return data
 
 
