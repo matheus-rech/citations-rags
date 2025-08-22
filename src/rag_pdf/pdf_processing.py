@@ -43,6 +43,10 @@ def extract_text_from_doc(path: str) -> str:
         parts = []
         for page in doc:
             parts.append(page.get_text())
-        return "\f".join(parts)
+        with fitz.open(path) as doc:
+            parts = []
+            for page in doc:
+                parts.append(page.get_text())
+            return "\f".join(parts)
     except Exception:
         return ""
