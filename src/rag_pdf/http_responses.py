@@ -15,8 +15,10 @@ def responses_create_json_schema(api_key: str, model: str, system: str, input_te
     }
     payload = {
         "model": model,
-        "system": system,
-        "input": input_text,
+        "input": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": input_text},
+        ],
         "temperature": 0,
         "response_format": {
             "type": "json_schema",

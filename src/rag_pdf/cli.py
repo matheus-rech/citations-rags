@@ -155,6 +155,12 @@ def main():
     p_harmonize.add_argument("inputs", nargs='+', help="One or more JSON extraction files under data/")
     p_harmonize.add_argument("--out", type=str, default=None, help="Output CSV path (default data/harmonized_meta.csv)")
 
+    # PDF highlighting tool
+    p_highlight = sub.add_parser("highlight", help="Highlight citations on a PDF and write a new PDF with annotations")
+    p_highlight.add_argument("pdf", type=str, help="Path to a single PDF file under data/")
+    p_highlight.add_argument("out", type=str, help="Output PDF path (e.g., data/output_highlighted.pdf)")
+    p_highlight.add_argument("citations", type=str, help="JSON file path or inline JSON array/object with citations")
+
     args = parser.parse_args()
 
     if args.cmd == "run":
@@ -204,6 +210,30 @@ def main():
         with open(out_path, 'w') as f:
             json.dump(data, f, indent=2)
         print(f"[green]Saved structured extraction to {out_path}[/green]")
+    elif args.cmd == "highlight":
+        from .pdf_highlighter import highlight_pdf, load_citations_from_json
+        settings = load_settings()
+        pdf_path = args.pdf
+        if not os.path.isfile(pdf_path):
+            candidate = os.path.join(settings.data_dir, pdf_path)
+            if os.path.isfile(candidate):
+                pdf_path = candidate
+            else:
+                print(f"[red]PDF not found: {args.pdf}[/red]")
+                return
+        out_path = args.out if os.path.isabs(args.out) else os.path.join(settings.data_dir, args.out)
+        try:
+            cits = load_citations_from_json(args.citations)
+        except Exception as e:
+            print(f"[red]Failed to load citations: {e}[/red]")
+            return
+        try:
+            summary = highlight_pdf(pdf_path, out_path, cits)
+        except Exception as e:
+            print(f"[red]Highlighting failed: {e}[/red]")
+            return
+        print(f"[green]Created highlighted PDF at: {out_path}[/green]")
+        print(f"Summary: {summary}")
     elif args.cmd == "harmonize":
         settings = load_settings()
         from .harmonize import harmonize_to_csv
