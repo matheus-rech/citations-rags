@@ -159,7 +159,10 @@ def load_citations_from_json(path_or_json: str) -> List[Dict[str, Any]]:
         with open(path_or_json, "r") as f:
             data = json.load(f)
     except FileNotFoundError:
-        data = json.loads(path_or_json)
+        try:
+            data = json.loads(path_or_json)
+        except json.JSONDecodeError as e:
+            raise ValueError("Input is neither a valid file path nor a valid JSON string.") from e
     if isinstance(data, dict) and "citations" in data:
         return data["citations"]
     if isinstance(data, list):
