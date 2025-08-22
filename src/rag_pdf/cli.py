@@ -92,8 +92,7 @@ def run_pipeline(pdf_dir: str | None = None, skip_vision: bool = False, skip_tex
     print("Creating embeddings (this can take a while)...")
     df = embedder.build_df(cleaned)
     embedder.save_df(df, settings.embeddings_csv_path)
-    print(f"[green]Saved embeddings to {settings.embeddings_csv_path}[/green]
-")
+    print(f"[green]Saved embeddings to {settings.embeddings_csv_path}[/green]")
 
 
 def run_query(query: str, top_k: int = 3) -> None:
@@ -121,6 +120,10 @@ def run_query(query: str, top_k: int = 3) -> None:
         if len(row["content"]) > 120:
             content_preview += "..."
         print(f"[grey37]{content_preview}[/grey37]\n")
+
+    if top.empty:
+        print("[yellow]No content available to answer the query. Run the pipeline with real PDFs first.[/yellow]")
+        return
 
     reply = rag.generate(query, top)
     print(f"[turquoise4][b]REPLY:[/b][/turquoise4]\n\n[spring_green4]{reply}[/spring_green4]")

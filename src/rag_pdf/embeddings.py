@@ -3,6 +3,7 @@ from typing import List
 import pandas as pd
 import numpy as np
 from openai import OpenAI
+from ast import literal_eval
 
 
 @dataclass
@@ -35,5 +36,11 @@ class Embedder:
     @staticmethod
     def load_df(path: str) -> pd.DataFrame:
         df = pd.read_csv(path)
-        df["embeddings"] = df.embeddings.apply(lambda s: np.array(eval(s)))
+        def safe_literal_eval(s):
+            try:
+                return np.array(literal_eval(s))
+            except (ValueError, SyntaxError) as e:
+                logging.warning(f"Failed to parse embedding string: {s!r} ({e})")
+                return np.array([])
+        df["embeddings"] = df.embeddings.apply(safe_literal_eval)
         return df
