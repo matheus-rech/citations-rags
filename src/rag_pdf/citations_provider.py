@@ -16,8 +16,10 @@ from typing import Any, Dict, List, Tuple
 import httpx
 
 
+from .config import Settings
+
+
 ANTHROPIC_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/messages")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
 
 
 def _read_pdf_b64(path: str) -> str:
@@ -28,6 +30,7 @@ def _read_pdf_b64(path: str) -> str:
 def claude_query_with_pdf_and_citations(
     pdf_path: str,
     question: str,
+    settings: Settings,
     title: str | None = None,
     model: str | None = None,
     max_tokens: int = 1024,
@@ -37,18 +40,17 @@ def claude_query_with_pdf_and_citations(
 
     Returns the raw JSON response.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required in environment")
+    if not settings.anthropic_api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is required but not set. See README.md")
 
     pdf_b64 = _read_pdf_b64(pdf_path)
     headers = {
         "content-type": "application/json",
-        "x-api-key": api_key,
+        "x-api-key": settings.anthropic_api_key,
         "anthropic-version": "2023-06-01",
     }
     body = {
-        "model": model or ANTHROPIC_MODEL,
+        "model": model or settings.anthropic_model,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "messages": [
@@ -112,6 +114,7 @@ def ask_and_highlight_with_claude(
     pdf_path: str,
     out_pdf_path: str,
     question: str,
+    settings: Settings,
     title: str | None = None,
     model: str | None = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -121,7 +124,7 @@ def ask_and_highlight_with_claude(
     """
     from .pdf_highlighter import highlight_pdf  # local import to avoid cycles
 
-    resp = claude_query_with_pdf_and_citations(pdf_path, question, title=title, model=model)
+    resp = claude_query_with_pdf_and_citations(pdf_path, question, settings, title=title, model=model)
     citations = extract_page_location_citations_from_claude(resp)
     # Even if citations empty, produce an output copy (no highlights)
     summary = highlight_pdf(pdf_path, out_pdf_path, citations)

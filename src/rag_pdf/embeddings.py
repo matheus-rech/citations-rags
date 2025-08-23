@@ -24,8 +24,10 @@ class Embedder:
         )
         return resp.data[0].embedding
 
-    def build_df(self, contents: List[str]) -> pd.DataFrame:
-        df = pd.DataFrame(contents, columns=["content"])
+    def build_df(self, contents: List[Dict[str, str]]) -> pd.DataFrame:
+        if not contents:
+            return pd.DataFrame(columns=["content", "filename", "embeddings"])
+        df = pd.DataFrame(contents)
         df["embeddings"] = df["content"].apply(lambda x: self.embed_text(x))
         return df
 

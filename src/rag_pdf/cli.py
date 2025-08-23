@@ -16,6 +16,20 @@ from .schemas import StudyExtraction
 from .structured_pipeline import run_strict_extraction_for_pdf
 
 
+def _apply_citation_overrides(
+    citations: List[Dict[str, Any]], entity_type: str | None, color: str | None
+) -> None:
+    """Apply entity_type and color overrides to a list of citations in-place."""
+    if not (entity_type or color):
+        return
+    for c in citations:
+        if isinstance(c, dict):
+            if entity_type:
+                c["entity_type"] = entity_type
+            if color:
+                c["color"] = color
+
+
 def list_pdfs(pdf_dir: str) -> List[str]:
     files = []
     for item in os.listdir(pdf_dir):
@@ -118,7 +132,9 @@ def run_query(query: str, top_k: int = 3) -> None:
             sim = sim[0][0]
         elif hasattr(sim, "shape"):
             sim = float(sim[0][0])
-        print(f"[grey37][i]Similarity: {sim:.2f}[/i][/grey37]")
+
+        filename_str = f" from [bold]{row.get('filename', 'unknown')}[/bold]"
+        print(f"[grey37][i]Similarity: {sim:.2f}[/i]{filename_str}[/grey37]")
         content_preview = row["content"][:120]
         if len(row["content"]) > 120:
             content_preview += "..."
@@ -243,19 +259,8 @@ def main():
             return
         
         # Apply overrides if specified
-        if args.entity_type or args.color:
-            enhanced_cits = []
-            for c in cits:
-                if isinstance(c, dict):
-                    if args.entity_type:
-                        c["entity_type"] = args.entity_type
-                    if args.color:
-                        c["color"] = args.color
-                    enhanced_cits.append(c)
-                else:
-                    enhanced_cits.append(c)
-            cits = enhanced_cits
-        
+        _apply_citation_overrides(cits, args.entity_type, args.color)
+
         try:
             summary = highlight_pdf(pdf_path, out_path, cits)
         except Exception as e:
@@ -291,6 +296,10 @@ def main():
     elif args.cmd == "ask-highlight-claude":
         from .citations_provider import ask_and_highlight_with_claude
         settings = load_settings()
+        if not settings.anthropic_api_key:
+            print("[red]ANTHROPIC_API_KEY must be set for this command. See README.md[/red]")
+            return
+
         pdf_path = args.pdf
         if not os.path.isfile(pdf_path):
             candidate = os.path.join(settings.data_dir, pdf_path)
@@ -301,7 +310,9 @@ def main():
                 return
         out_path = args.out if os.path.isabs(args.out) else os.path.join(settings.data_dir, args.out)
         try:
-            summary, citations = ask_and_highlight_with_claude(pdf_path, out_path, args.question, title=args.title, model=args.model)
+            summary, citations = ask_and_highlight_with_claude(
+                pdf_path, out_path, args.question, settings, title=args.title, model=args.model
+            )
         except Exception as e:
             print(f"[red]Claude ask+highlight failed: {e}[/red]")
             return
@@ -309,16 +320,9 @@ def main():
         # Apply overrides if specified
         if args.entity_type or args.color:
             from .pdf_highlighter import highlight_pdf
-            enhanced_cits = []
-            for c in citations:
-                if isinstance(c, dict):
-                    if args.entity_type:
-                        c["entity_type"] = args.entity_type
-                    if args.color:
-                        c["color"] = args.color
-                enhanced_cits.append(c)
+            _apply_citation_overrides(citations, args.entity_type, args.color)
             # Re-highlight with overrides
-            summary = highlight_pdf(pdf_path, out_path, enhanced_cits)
+            summary = highlight_pdf(pdf_path, out_path, citations)
         
         print(f"[green]Created highlighted PDF at: {out_path}[/green]")
         print(f"Summary: {summary}")
