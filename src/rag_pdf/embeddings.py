@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict
 import pandas as pd
 import numpy as np
 from openai import OpenAI

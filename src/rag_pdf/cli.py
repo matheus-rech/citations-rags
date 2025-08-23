@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import pandas as pd
 from typing import List, Dict, Any
 from rich import print
 from tqdm import tqdm
@@ -135,8 +136,13 @@ def run_query(query: str, top_k: int = 3) -> None:
 
         filename_str = f" from [bold]{row.get('filename', 'unknown')}[/bold]"
         print(f"[grey37][i]Similarity: {sim:.2f}[/i]{filename_str}[/grey37]")
-        content_preview = row["content"][:120]
-        if len(row["content"]) > 120:
+
+        content = row.get("content", "")
+        if pd.isna(content):
+            content = ""
+
+        content_preview = content[:120]
+        if len(content) > 120:
             content_preview += "..."
         print(f"[grey37]{content_preview}[/grey37]\n")
 
