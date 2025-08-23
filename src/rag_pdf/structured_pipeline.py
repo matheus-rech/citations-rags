@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
 import json
 import os
+import logging
 from openai import OpenAI
 from jsonschema import validate
 from .vision_analytics import VisionAnalyzer
@@ -277,28 +278,26 @@ def extract_with_responses_api(text: str, model: str, api_key: str) -> Dict[str,
     # Call REST Responses API with strict json_schema
     resp_json = responses_create_json_schema(api_key=api_key, model=model, system=system, input_text=user, json_schema=META_SCHEMA)
     raw = extract_output_text(resp_json) or '{}'
+    data = {}
     try:
         data = json.loads(raw)
-    except Exception:
-        start = raw.find('{')
-        end = raw.rfind('}')
-        data = json.loads(raw[start:end+1])
-    try:
-        validate(instance=data, schema=META_SCHEMA)
-    except Exception:
     except json.JSONDecodeError as e:
         logging.warning(f"Initial JSON parsing failed: {e}. Attempting to parse substring.")
         start = raw.find('{')
         end = raw.rfind('}')
+        if start != -1 and end != -1:
+            try:
+                data = json.loads(raw[start:end+1])
+            except json.JSONDecodeError as e2:
+                logging.error(f"Fallback JSON parsing also failed: {e2}. Returning empty dict.")
+                data = {}
+
+    if data:
         try:
-            data = json.loads(raw[start:end+1])
-        except json.JSONDecodeError as e2:
-            logging.error(f"Fallback JSON parsing also failed: {e2}. Returning empty dict.")
-            data = {}
-    try:
-        validate(instance=data, schema=META_SCHEMA)
-    except Exception as e:
-        logging.warning(f"Schema validation failed: {e}")
+            validate(instance=data, schema=META_SCHEMA)
+        except Exception as e:
+            logging.warning(f"Schema validation failed: {e}")
+
     return data
 
 
